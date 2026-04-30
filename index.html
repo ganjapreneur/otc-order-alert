@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>OTC Order Alert</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#080808" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="OTC Orders" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap');
+
+    :root {
+      --green:   #00e87a;
+      --red:     #ff2d55;
+      --amber:   #ffb800;
+      --bg:      #080808;
+      --surface: #101010;
+      --surface2:#161616;
+      --border:  #1e1e1e;
+      --border2: #2a2a2a;
+      --text:    #f0f0f0;
+      --muted:   #555;
+      --muted2:  #888;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    /* ─────────────── SCREEN SYSTEM ─────────────── */
+    .screen {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 28px 22px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      overflow-y: auto;
+    }
+    .screen.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    /* ─────────────── FLASH OVERLAY ─────────────── */
+    #flashOverlay {
+      position: fixed; inset: 0;
+      background: var(--red);
+      opacity: 0; pointer-events: none;
+      z-index: 80;
+    }
+    #flashOverlay.flashing {
+      animation: redflash 0.9s ease-in-out infinite;
+    }
+    @keyframes redflash {
+      0%,100% { opacity: 0; }
+      50%      { opacity: 0.18; }
+    }
+
+    /* ─────────────── IDLE SCREEN ─────────────── */
+    #screen-idle {
+      gap: 0;
+      background: var(--bg);
+    }
+
+    .idle-logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(72px, 22vw, 110px);
+      color: var(--green);
+      letter-spacing: 0.05em;
+      line-height: 1;
+    }
+    .idle-tagline {
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 40px;
+    }
+
+    /* Pulse ring */
+    .pulse-ring {
+      width: 118px; height: 118px;
+      min-width: 118px; min-height: 118px;
+      border-radius: 50%;
+      border: 2.5px solid var(--border2);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 16px;
+      position: relative;
+      align-self: center;
+      flex-shrink: 0;
+    }
+    .pulse-ring.on {
+      border-color: var(--green);
+      animation: pulseRing 2.4s ease-out infinite;
+    }
+    .pulse-ring.on::before {
+      content: '';
+      position: absolute;
+      inset: -12px;
+      border-radius: 50%;
+      border: 1px solid var(--green);
+      opacity: 0;
+      animation: pulseRing2 2.4s ease-out infinite 0.4s;
+    }
+    @keyframes pulseRing {
+      0%   { box-shadow: 0 0 0 0 rgba(0,232,122,0.5); }
+      70%  { box-shadow: 0 0 0 20px rgba(0,232,122,0); }
+      100% { box-shadow: 0 0 0 0 rgba(0,232,122,0); }
+    }
+    @keyframes pulseRing2 {
+      0%   { opacity: 0.4; transform: scale(1); }
+      100% { opacity: 0; transform: scale(1.3); }
+    }
+    .pulse-dot {
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--border2);
+    }
+    .pulse-ring.on .pulse-dot { background: var(--green); }
+
+    .monitor-status {
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 40px;
+    }
+    .monitor-status.on { color: var(--green); }
+
+    /* Card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 20px;
+      width: 100%;
+      max-width: 370px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card-label {
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .info-row span:first-child { font-size: 12px; color: var(--muted2); }
+    .info-row span:last-child  { font-size: 12px; color: var(--text); font-family: 'DM Mono', monospace; }
+
+    /* Buttons */
+    .btn {
+      border: none; border-radius: 12px; cursor: pointer;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 20px; letter-spacing: 0.08em;
+      padding: 14px 20px;
+      transition: opacity 0.15s, transform 0.1s, background 0.2s;
+      width: 100%; outline: none;
+    }
+    .btn:active { transform: scale(0.97); }
+
+    .btn-green  { background: var(--green); color: #000; }
+    .btn-red    { background: transparent; border: 1.5px solid var(--red); color: var(--red); font-family: 'DM Sans', sans-serif; font-size: 14px; letter-spacing: 0.04em; padding: 11px; }
+    .btn-ghost  { background: transparent; border: 1px solid var(--border2); color: var(--muted2); font-family: 'DM Sans', sans-serif; font-size: 13px; letter-spacing: 0.04em; padding: 10px; }
+
+    .idle-footer {
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 8px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      transition: border-color 0.2s;
+    }
+    .idle-footer:hover { border-color: var(--border2); }
+    .idle-footer span { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+
+    /* ─────────────── ALERT SCREEN ─────────────── */
+    #screen-alert {
+      background: #080808;
+      z-index: 70;
+      gap: 0;
+      justify-content: center;
+    }
+
+    .alert-bell {
+      font-size: 76px;
+      margin-bottom: 14px;
+      animation: bellShake 0.4s ease-in-out infinite;
+    }
+    @keyframes bellShake {
+      0%,100% { transform: rotate(-8deg) scale(1.05); }
+      50%      { transform: rotate(8deg) scale(1); }
+    }
+
+    .alert-headline {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(64px, 20vw, 92px);
+      color: var(--red);
+      letter-spacing: 0.04em;
+      line-height: 1;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+    .alert-sub {
+      font-size: 13px; color: var(--muted2);
+      text-align: center; margin-bottom: 10px;
+      letter-spacing: 0.04em;
+    }
+    .alert-subject-pill {
+      font-size: 12px; color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding: 10px 18px;
+      text-align: center;
+      max-width: 320px;
+      margin-bottom: 32px;
+      word-break: break-word;
+      font-family: 'DM Mono', monospace;
+    }
+
+    /* Countdown ring */
+    .countdown-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      margin-bottom: 28px;
+      gap: 10px;
+    }
+    .countdown-ring-svg { transform: rotate(-90deg); }
+    .ring-bg   { fill: none; stroke: var(--border2); stroke-width: 4; }
+    .ring-prog { fill: none; stroke: var(--red); stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+    .countdown-num {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 28px;
+      color: var(--red);
+      letter-spacing: 0.06em;
+    }
+    .countdown-label {
+      font-size: 10px; letter-spacing: 0.15em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .ring-center {
+      position: absolute;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    .ring-wrap {
+      position: relative;
+      width: 80px; height: 80px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ring-wrap svg { position: absolute; inset: 0; }
+
+    .btn-confirm {
+      background: var(--green); color: #000;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 26px; letter-spacing: 0.1em;
+      border: none; border-radius: 16px;
+      padding: 22px 32px; cursor: pointer;
+      width: 100%; max-width: 370px;
+      box-shadow: 0 0 50px rgba(0,232,122,0.2);
+      transition: transform 0.1s, box-shadow 0.2s;
+      outline: none;
+    }
+    .btn-confirm:active { transform: scale(0.97); }
+
+    /* ─────────────── PASSWORD SCREEN ─────────────── */
+    #screen-password {
+      background: var(--bg);
+      z-index: 60;
+      gap: 24px;
+    }
+
+    .pw-icon { font-size: 48px; }
+    .pw-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 36px; letter-spacing: 0.08em;
+      color: var(--text);
+    }
+    .pw-sub { font-size: 13px; color: var(--muted); letter-spacing: 0.04em; }
+
+    .pin-display {
+      display: flex; gap: 10px; margin: 4px 0;
+    }
+    .pin-dot {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      border: 2px solid var(--border2);
+      background: transparent;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .pin-dot.filled { background: var(--green); border-color: var(--green); }
+    .pin-dot.error  { background: var(--red); border-color: var(--red); }
+
+    .numpad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      width: 100%; max-width: 280px;
+    }
+    .numpad-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 22px; font-weight: 500;
+      padding: 18px 0;
+      cursor: pointer;
+      transition: background 0.1s, transform 0.1s;
+      outline: none;
+    }
+    .numpad-btn:active { background: var(--surface2); transform: scale(0.94); }
+    .numpad-btn.del { font-size: 16px; color: var(--muted2); }
+    .numpad-btn.empty { opacity: 0; pointer-events: none; }
+
+    .pw-error {
+      font-size: 12px; color: var(--red);
+      letter-spacing: 0.06em; min-height: 18px;
+    }
+
+    .pw-back {
+      font-size: 12px; color: var(--muted);
+      letter-spacing: 0.08em; text-transform: uppercase;
+      cursor: pointer; padding: 8px 16px;
+      border-radius: 20px; border: 1px solid var(--border);
+      background: none; outline: none;
+      transition: border-color 0.2s;
+    }
+    .pw-back:hover { border-color: var(--border2); }
+
+    /* ─────────────── SETTINGS SCREEN ─────────────── */
+    #screen-settings {
+      background: var(--bg);
+      z-index: 50;
+      justify-content: flex-start;
+      padding-top: 56px;
+      padding-bottom: 40px;
+      overflow-y: auto;
+      gap: 0;
+    }
+
+    .settings-header {
+      display: flex; align-items: center;
+      width: 100%; max-width: 420px;
+      margin-bottom: 28px; gap: 14px;
+    }
+    .settings-back {
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 18px;
+      transition: border-color 0.2s;
+      flex-shrink: 0;
+    }
+    .settings-back:hover { border-color: var(--border2); }
+    .settings-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 32px; letter-spacing: 0.08em;
+      color: var(--text);
+    }
+    .settings-badge {
+      margin-left: auto;
+      font-size: 9px; letter-spacing: 0.15em;
+      text-transform: uppercase; color: var(--amber);
+      border: 1px solid var(--amber);
+      border-radius: 20px; padding: 3px 10px;
+    }
+
+    .settings-section {
+      width: 100%; max-width: 420px;
+      margin-bottom: 24px;
+    }
+    .section-title {
+      font-size: 9px; letter-spacing: 0.2em;
+      text-transform: uppercase; color: var(--muted);
+      margin-bottom: 10px; padding-left: 4px;
+    }
+    .settings-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .settings-row {
+      display: flex; flex-direction: column; gap: 8px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .settings-row:last-child { border-bottom: none; }
+    .settings-row label {
+      font-size: 12px; color: var(--muted2);
+      letter-spacing: 0.04em;
+    }
+
+    .s-input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      padding: 10px 14px; outline: none;
+      width: 100%;
+      transition: border-color 0.2s;
+    }
+    .s-input:focus { border-color: var(--green); }
+
+    .s-select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      padding: 10px 14px; outline: none;
+      width: 100%; cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23555' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 36px;
+      transition: border-color 0.2s;
+    }
+    .s-select:focus { border-color: var(--green); }
+    .s-select option { background: #161616; }
+
+    /* Range slider */
+    .range-wrap {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .s-range {
+      flex: 1; appearance: none;
+      height: 3px; border-radius: 2px;
+      background: var(--border2); outline: none; cursor: pointer;
+    }
+    .s-range::-webkit-slider-thumb {
+      appearance: none; width: 18px; height: 18px;
+      border-radius: 50%; background: var(--green);
+      cursor: pointer; box-shadow: 0 0 8px rgba(0,232,122,0.4);
+    }
+    .range-val {
+      font-family: 'DM Mono', monospace;
+      font-size: 13px; color: var(--green);
+      min-width: 40px; text-align: right;
+    }
+
+    .preview-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 9px; color: var(--muted2);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px; letter-spacing: 0.06em;
+      padding: 9px 16px; cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 4px; outline: none;
+    }
+    .preview-btn:hover { color: var(--text); border-color: var(--border2); }
+    .preview-btn.playing { color: var(--green); border-color: var(--green); }
+
+    .save-btn {
+      width: 100%; max-width: 420px;
+      background: var(--green); color: #000;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 22px; letter-spacing: 0.1em;
+      border: none; border-radius: 14px;
+      padding: 16px; cursor: pointer;
+      margin-top: 8px;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .save-btn:active { transform: scale(0.98); }
+
+    .sign-out-row {
+      width: 100%; max-width: 420px;
+      margin-top: 8px;
+    }
+
+    /* ─────────────── AUTH SCREEN ─────────────── */
+    #screen-auth {
+      background: var(--bg); gap: 20px;
+    }
+    .auth-icon { font-size: 58px; }
+    .auth-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 38px; letter-spacing: 0.08em;
+      color: var(--text); text-align: center;
+    }
+    .auth-desc { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.6; max-width: 300px; }
+
+    /* ─────────────── SNACKBAR ─────────────── */
+    #snackbar {
+      position: fixed; bottom: 28px;
+      left: 50%; transform: translateX(-50%) translateY(80px);
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 12px; padding: 12px 22px;
+      font-size: 13px; color: var(--muted2);
+      transition: transform 0.3s ease; z-index: 200;
+      white-space: nowrap;
+    }
+    #snackbar.show { transform: translateX(-50%) translateY(0); }
+
+    /* Log */
+    .log-box {
+      width: 100%; max-width: 370px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px;
+      max-height: 78px; overflow-y: auto;
+      margin-top: 14px;
+    }
+    .log-line {
+      font-size: 10px; color: var(--muted);
+      font-family: 'DM Mono', monospace; padding: 2px 0;
+    }
+    .log-line.ok   { color: var(--green); }
+    .log-line.warn { color: var(--amber); }
+    .log-line.err  { color: var(--red); }
+  </style>
+</head>
+<body>
+
+<div id="flashOverlay"></div>
+
+<!-- ══════════════ AUTH SCREEN ══════════════ -->
+<div id="screen-auth" class="screen active">
+  <div class="auth-icon">📬</div>
+  <div class="auth-title">Sign In to Monitor</div>
+  <p class="auth-desc">Sign in with the Gmail account you want to monitor for new online orders.</p>
+  <button class="btn btn-green" id="signInBtn" style="max-width:320px">Sign In with Google</button>
+  <p class="auth-desc" style="font-size:11px;margin-top:-8px">Credentials stay on your device and are only used to check for new orders.</p>
+</div>
+
+<!-- ══════════════ IDLE / MONITORING SCREEN ══════════════ -->
+<div id="screen-idle" class="screen">
+  <img src="otc-logo.png" alt="Off The Charts Monterey" style="width:200px;max-width:60vw;margin-bottom:28px;" />
+
+  <div class="pulse-ring" id="pulseRing">
+    <div class="pulse-dot"></div>
+  </div>
+  <div class="monitor-status" id="monitorStatus">Not Monitoring</div>
+
+  <div class="card">
+    <button class="btn btn-green" id="startBtn" style="display:none">Start Monitoring</button>
+    <button class="btn btn-red"   id="stopBtn" style="display:none">Stop Monitoring</button>
+  </div>
+
+  <!-- Hidden settings tap area (bottom right gear) -->
+  <div class="idle-footer" id="settingsGate" style="margin-top:24px">
+    <span>⚙</span>
+    <span>Manager Settings</span>
+  </div>
+</div>
+
+<!-- ══════════════ ALERT SCREEN ══════════════ -->
+<div id="screen-alert" class="screen">
+  <div class="alert-bell">🔔</div>
+  <div class="alert-headline">NEW ORDER!</div>
+  <div class="alert-sub">A new online order has come through</div>
+  <div class="alert-subject-pill" id="alertSubjectText">—</div>
+
+  <div class="countdown-wrap">
+    <div class="ring-wrap">
+      <svg class="countdown-ring-svg" width="80" height="80" viewBox="0 0 80 80">
+        <circle class="ring-bg"   cx="40" cy="40" r="34"/>
+        <circle class="ring-prog" id="ringProg" cx="40" cy="40" r="34"
+          stroke-dasharray="213.6" stroke-dashoffset="0"/>
+      </svg>
+      <div class="ring-center">
+        <div class="countdown-num" id="countdownNum">—</div>
+      </div>
+    </div>
+    <div class="countdown-label">Next alarm in</div>
+  </div>
+
+  <button class="btn-confirm" id="confirmBtn">✓ I'm On It — Fulfilling Now</button>
+</div>
+
+<!-- ══════════════ PASSWORD SCREEN ══════════════ -->
+<div id="screen-password" class="screen">
+  <div class="pw-icon">🔒</div>
+  <div class="pw-title">Manager Access</div>
+  <div class="pw-sub">Enter your PIN to continue</div>
+
+  <div class="pin-display" id="pinDisplay">
+    <div class="pin-dot" id="pd0"></div>
+    <div class="pin-dot" id="pd1"></div>
+    <div class="pin-dot" id="pd2"></div>
+    <div class="pin-dot" id="pd3"></div>
+    <div class="pin-dot" id="pd4"></div>
+    <div class="pin-dot" id="pd5"></div>
+  </div>
+
+  <div class="pw-error" id="pwError"></div>
+
+  <div class="numpad" id="numpad">
+    <button class="numpad-btn" data-n="1">1</button>
+    <button class="numpad-btn" data-n="2">2</button>
+    <button class="numpad-btn" data-n="3">3</button>
+    <button class="numpad-btn" data-n="4">4</button>
+    <button class="numpad-btn" data-n="5">5</button>
+    <button class="numpad-btn" data-n="6">6</button>
+    <button class="numpad-btn" data-n="7">7</button>
+    <button class="numpad-btn" data-n="8">8</button>
+    <button class="numpad-btn" data-n="9">9</button>
+    <button class="numpad-btn empty"></button>
+    <button class="numpad-btn" data-n="0">0</button>
+    <button class="numpad-btn del" id="delBtn">⌫</button>
+  </div>
+
+  <button class="pw-back" id="pwBack">← Back</button>
+</div>
+
+<!-- ══════════════ SETTINGS SCREEN ══════════════ -->
+<div id="screen-settings" class="screen">
+  <div class="settings-header">
+    <div class="settings-back" id="settingsBack">←</div>
+    <div class="settings-title">Settings</div>
+    <div class="settings-badge">Manager Only</div>
+  </div>
+
+  <!-- Gmail -->
+  <div class="settings-section">
+    <div class="section-title">Gmail Connection</div>
+    <div class="settings-card">
+      <div class="settings-row">
+        <label>Connected Account</label>
+        <input class="s-input" id="sEmailDisplay" readonly style="color:var(--muted2)" />
+      </div>
+      <div class="settings-row" style="border:none">
+        <button class="preview-btn" id="sSignOutBtn">Sign Out of Google</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Order Detection -->
+  <div class="settings-section">
+    <div class="section-title">Order Detection</div>
+    <div class="settings-card">
+      <div class="settings-row">
+        <label>Watch for Subject Line (partial match)</label>
+        <input class="s-input" id="sSubject" placeholder="e.g. A new pickup order has been submitted:" />
+      </div>
+      <div class="settings-row" style="border:none">
+        <label>Poll Frequency</label>
+        <div class="range-wrap">
+          <input class="s-range" type="range" id="sPollFreq" min="15" max="120" step="5" value="30" />
+          <div class="range-val" id="sPollFreqVal">30s</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alarm Sound -->
+  <div class="settings-section">
+    <div class="section-title">Alarm Sound</div>
+    <div class="settings-card">
+      <div class="settings-row">
+        <label>Sound Style</label>
+        <select class="s-select" id="sSoundStyle">
+          <option value="neworder">🛒 New Order — Warm 3-note order chime</option>
+          <option value="doorbell">🔔 Doorbell — Classic ding-dong bell</option>
+          <option value="marimba">🎶 Marimba — Bright tropical order alert</option>
+          <option value="triumph">🎺 Triumph — Ascending fanfare</option>
+          <option value="softchime">✨ Soft Chime — Gentle repeating tones</option>
+          <option value="cashregister">💰 Cash Register — Classic ka-ching</option>
+          <option value="urgent">🚨 Urgent Beep — Rapid emergency tone</option>
+          <option value="siren">🔊 Dual Siren — Alternating high/low sweep</option>
+          <option value="chime">🎵 Store Chime — Ascending bells</option>
+          <option value="buzzer">📣 Buzzer — Deep industrial buzz</option>
+          <option value="pulse">💓 Pulse — Rhythmic heartbeat pattern</option>
+          <option value="digital">🤖 Digital — Retro 8-bit alarm</option>
+        </select>
+      </div>
+      <div class="settings-row" style="border:none">
+        <button class="preview-btn" id="previewBtn">▶ Preview Sound</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timing -->
+  <div class="settings-section">
+    <div class="section-title">Alert Timing</div>
+    <div class="settings-card">
+      <div class="settings-row">
+        <label>Alarm Duration (how long the sound plays)</label>
+        <div class="range-wrap">
+          <input class="s-range" type="range" id="sAlarmDur" min="1" max="10" step="0.5" value="2.5" />
+          <div class="range-val" id="sAlarmDurVal">2.5s</div>
+        </div>
+      </div>
+      <div class="settings-row" style="border:none">
+        <label>Pause Between Alarms</label>
+        <div class="range-wrap">
+          <input class="s-range" type="range" id="sPauseDur" min="5" max="60" step="1" value="12" />
+          <div class="range-val" id="sPauseDurVal">12s</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button class="save-btn" id="saveBtn">Save Settings</button>
+
+  <div class="sign-out-row" style="display:flex;flex-direction:column;gap:8px;width:100%;max-width:420px;margin-top:0">
+    <button class="btn btn-ghost" id="viewLogBtn" style="width:100%;">📋 View Order Log</button>
+    <button class="btn btn-ghost" id="sSignOutBtn2" style="width:100%;margin-top:0">Sign Out</button>
+  </div>
+</div>
+
+<!-- ══════════════ LOG SCREEN ══════════════ -->
+<div id="screen-log" class="screen">
+  <div class="settings-header">
+    <div class="settings-back" id="logBack">←</div>
+    <div class="settings-title">Order Log</div>
+    <div class="settings-badge" style="border-color:var(--green);color:var(--green)">History</div>
+  </div>
+  <div style="width:100%;max-width:420px;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;flex:1;overflow-y:auto;max-height:60vh;">
+    <div id="logBox" style="display:flex;flex-direction:column;gap:6px;">
+      <div class="log-line" style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);">Waiting to start...</div>
+    </div>
+  </div>
+  <button class="btn btn-ghost" id="clearLogBtn" style="width:100%;max-width:420px;margin-top:12px;">Clear Log</button>
+</div>
+
+<!-- Snackbar -->
+<div id="snackbar"></div>
+
+<!-- Service Worker Registration -->
+<script src="register-sw.js"></script>
+
+<!-- Google Identity Services -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  CONFIG — Replace with your Google OAuth Client ID
+// ═══════════════════════════════════════════════════
+const GOOGLE_CLIENT_ID = '133516377818-rt4tjbbehkmnb4m4vtpdpnk0i4d56hi8.apps.googleusercontent.com';
+const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+const CORRECT_PIN = '420420';
+
+// ─── DEFAULT SETTINGS (saved to localStorage) ───
+const DEFAULTS = {
+  subject:    'A new pickup order has been submitted:',
+  soundStyle: 'neworder',
+  alarmDur:   2.5,   // seconds
+  pauseDur:   12,    // seconds
+  pollFreq:   30,    // seconds
+};
+
+// ─── STATE ───
+let cfg = { ...DEFAULTS };
+let accessToken  = null;
+let userEmail    = '';
+let isMonitoring = false;
+let monitorTimer = null;
+let alarmActive  = false;
+let alarmCycleTO = null;
+let countdownIV  = null;
+let pinEntry     = '';
+let audioCtx     = null;
+let previewActive = false;
+
+// ─── ELEMENTS ───
+const screens = {
+  auth:     document.getElementById('screen-auth'),
+  idle:     document.getElementById('screen-idle'),
+  alert:    document.getElementById('screen-alert'),
+  password: document.getElementById('screen-password'),
+  settings: document.getElementById('screen-settings'),
+};
+
+const $ = id => document.getElementById(id);
+
+// ─── SCREEN NAV ───
+function showScreen(name) {
+  Object.entries(screens).forEach(([k, el]) => {
+    el.classList.toggle('active', k === name);
+  });
+}
+
+// ─── SNACKBAR ───
+function snack(msg) {
+  const s = $('snackbar');
+  s.textContent = msg;
+  s.classList.add('show');
+  setTimeout(() => s.classList.remove('show'), 3000);
+}
+
+// ─── LOG ───
+function log(msg, type = '') {
+  const box = $('logBox');
+  const el  = document.createElement('div');
+  el.className = `log-line ${type}`;
+  el.style.cssText = 'font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);';
+  const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+  el.textContent = `[${t}] ${msg}`;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+// ─── SETTINGS PERSISTENCE ───
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('otc_cfg') || '{}');
+    cfg = { ...DEFAULTS, ...saved };
+  } catch { cfg = { ...DEFAULTS }; }
+}
+function saveSettings() {
+  localStorage.setItem('otc_cfg', JSON.stringify(cfg));
+}
+
+// ─── AUDIO ───
+function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+// 6 distinct alarm sound generators — each returns duration used
+function playSound(style, duration) {
+  if (!audioCtx) return;
+  const ctx = audioCtx;
+  const now = ctx.currentTime;
+  const dur = duration;
+
+  switch(style) {
+
+    case 'neworder': {
+      // Warm 3-note order chime — C E G major triad, friendly and clear
+      const master = ctx.createGain(); master.gain.setValueAtTime(0.6, now); master.connect(ctx.destination);
+      const notes = [523.25, 659.25, 783.99]; // C5 E5 G5
+      const cycleLen = 0.55;
+      const cycles = Math.max(1, Math.floor(dur / (cycleLen * notes.length)));
+      for (let c = 0; c < cycles; c++) {
+        notes.forEach((freq, i) => {
+          const t = now + c * cycleLen * notes.length + i * cycleLen;
+          if (t > now + dur) return;
+          [1, 2, 3].forEach((mult, hi) => {
+            const o = ctx.createOscillator(), g = ctx.createGain();
+            o.type = 'sine'; o.frequency.setValueAtTime(freq * mult, t);
+            const vol = [0.45, 0.15, 0.08][hi];
+            g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.015);
+            g.gain.exponentialRampToValueAtTime(0.001, t + cycleLen * 1.6);
+            o.connect(g); g.connect(master); o.start(t); o.stop(t + cycleLen * 2);
+          });
+        });
+      }
+      break;
+    }
+
+    case 'doorbell': {
+      // Classic ding-dong — two resonant bell tones
+      const master = ctx.createGain(); master.gain.setValueAtTime(0.7, now); master.connect(ctx.destination);
+      const pairs = [[587.33, 493.88], [523.25, 392]]; // D-B ding, C-G dong
+      const pairLen = 0.9;
+      const pairCount = Math.max(1, Math.floor(dur / (pairLen * 2)));
+      for (let p = 0; p < pairCount; p++) {
+        pairs.forEach((pair, pi) => {
+          const t = now + p * pairLen * 2 + pi * pairLen;
+          if (t > now + dur) return;
+          pair.forEach((freq, fi) => {
+            const o = ctx.createOscillator(), g = ctx.createGain();
+            o.type = 'sine'; o.frequency.setValueAtTime(freq, t);
+            g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(fi === 0 ? 0.5 : 0.3, t + 0.01);
+            g.gain.exponentialRampToValueAtTime(0.001, t + pairLen * 1.8);
+            o.connect(g); g.connect(master); o.start(t); o.stop(t + pairLen * 2);
+          });
+        });
+      }
+      break;
+    }
+
+    case 'marimba': {
+      // Bright marimba — tropical percussive order alert
+      const master = ctx.createGain(); master.gain.setValueAtTime(0.65, now); master.connect(ctx.destination);
+      const seq = [880, 1108.73, 1318.51, 880, 1046.5, 1318.51, 1567.98, 1318.51];
+      const stepLen = 0.18;
+      const total = Math.floor(dur / stepLen);
+      for (let i = 0; i < total; i++) {
+        const t = now + i * stepLen;
+        const freq = seq[i % seq.length];
+        [1, 4].forEach((mult, hi) => {
+          const o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = 'sine'; o.frequency.setValueAtTime(freq * mult, t);
+          const vol = hi === 0 ? 0.5 : 0.12;
+          g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.008);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+          o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.25);
+        });
+      }
+      break;
+    }
+
+    case 'triumph': {
+      // Ascending fanfare — bright triumphant order arrival
+      const master = ctx.createGain(); master.gain.setValueAtTime(0.55, now); master.connect(ctx.destination);
+      const fanfare = [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5];
+      const noteLen = 0.22;
+      const cycleLen2 = fanfare.length * noteLen;
+      const cycles2 = Math.max(1, Math.floor(dur / cycleLen2));
+      for (let c = 0; c < cycles2; c++) {
+        fanfare.forEach((freq, i) => {
+          const t = now + c * cycleLen2 + i * noteLen;
+          if (t > now + dur) return;
+          ['sine','triangle'].forEach((type, ti) => {
+            const o = ctx.createOscillator(), g = ctx.createGain();
+            o.type = type; o.frequency.setValueAtTime(freq * (ti === 1 ? 2 : 1), t);
+            const vol = ti === 0 ? 0.4 : 0.15;
+            g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.01);
+            g.gain.setValueAtTime(vol, t + noteLen - 0.03); g.gain.linearRampToValueAtTime(0, t + noteLen);
+            o.connect(g); g.connect(master); o.start(t); o.stop(t + noteLen + 0.01);
+          });
+        });
+      }
+      break;
+    }
+
+    case 'softchime': {
+      // Soft persistent chime — gentle repeating sine tones, unobtrusive but clear
+      const master = ctx.createGain(); master.gain.setValueAtTime(0.5, now); master.connect(ctx.destination);
+      const tones = [1046.5, 1318.51, 1567.98, 1318.51, 1046.5, 880];
+      const toneStep = 0.38;
+      const totalTones = Math.floor(dur / toneStep);
+      for (let i = 0; i < totalTones; i++) {
+        const t = now + i * toneStep;
+        const freq = tones[i % tones.length];
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.setValueAtTime(freq, t);
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.35, t + 0.04);
+        g.gain.setValueAtTime(0.35, t + toneStep * 0.5); g.gain.linearRampToValueAtTime(0, t + toneStep);
+        o.connect(g); g.connect(master); o.start(t); o.stop(t + toneStep + 0.05);
+      }
+      break;
+    }
+
+    case 'cashregister': {
+      // Classic cash register ka-ching
+      const master = ctx.createGain(); master.gain.setValueAtTime(0.7, now); master.connect(ctx.destination);
+      const cycleEvery = Math.min(dur, 1.2);
+      const numCycles = Math.max(1, Math.floor(dur / cycleEvery));
+      for (let c = 0; c < numCycles; c++) {
+        const tc = now + c * cycleEvery;
+        // "Ka" — low mechanical thud
+        const o1 = ctx.createOscillator(), g1 = ctx.createGain();
+        o1.type = 'square'; o1.frequency.setValueAtTime(200, tc); o1.frequency.exponentialRampToValueAtTime(80, tc + 0.08);
+        g1.gain.setValueAtTime(0, tc); g1.gain.linearRampToValueAtTime(0.6, tc + 0.005);
+        g1.gain.exponentialRampToValueAtTime(0.001, tc + 0.12);
+        o1.connect(g1); g1.connect(master); o1.start(tc); o1.stop(tc + 0.15);
+        // "Ching" — bright metallic ring
+        const t2 = tc + 0.1;
+        [1800, 2200, 2800].forEach((freq, fi) => {
+          const o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = 'sine'; o.frequency.setValueAtTime(freq, t2);
+          g.gain.setValueAtTime(0, t2); g.gain.linearRampToValueAtTime(0.3 - fi * 0.08, t2 + 0.005);
+          g.gain.exponentialRampToValueAtTime(0.001, t2 + 0.7);
+          o.connect(g); g.connect(master); o.start(t2); o.stop(t2 + 0.8);
+        });
+      }
+      break;
+    }
+
+    case 'urgent': {
+      // Rapid emergency beep — square wave, fast cadence
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.7, now);
+      master.connect(ctx.destination);
+      const beepEvery = 0.20, beepLen = 0.14;
+      const count = Math.floor(dur / beepEvery);
+      for (let i = 0; i < count; i++) {
+        const t = now + i * beepEvery;
+        [960, 1200].forEach((freq, fi) => {
+          const o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = fi === 0 ? 'square' : 'sawtooth';
+          o.frequency.setValueAtTime(freq, t);
+          g.gain.setValueAtTime(0, t);
+          g.gain.linearRampToValueAtTime(fi === 0 ? 0.55 : 0.2, t + 0.01);
+          g.gain.setValueAtTime(fi === 0 ? 0.55 : 0.2, t + beepLen - 0.01);
+          g.gain.linearRampToValueAtTime(0, t + beepLen);
+          o.connect(g); g.connect(master);
+          o.start(t); o.stop(t + beepLen);
+        });
+      }
+      break;
+    }
+
+    case 'siren': {
+      // Dual siren — smooth frequency sweep up/down
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.5, now);
+      master.connect(ctx.destination);
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(400, now);
+      const cycleLen = 0.8;
+      const cycles = Math.ceil(dur / cycleLen);
+      for (let i = 0; i < cycles; i++) {
+        const t = now + i * cycleLen;
+        o.frequency.linearRampToValueAtTime(1200, t + cycleLen * 0.5);
+        o.frequency.linearRampToValueAtTime(400,  t + cycleLen);
+      }
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(0.5, now + 0.05);
+      g.gain.setValueAtTime(0.5, now + dur - 0.05);
+      g.gain.linearRampToValueAtTime(0, now + dur);
+      o.connect(g); g.connect(master);
+      o.start(now); o.stop(now + dur);
+      break;
+    }
+
+    case 'chime': {
+      // Store chime — ascending pentatonic bell hits
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.6, now);
+      master.connect(ctx.destination);
+      const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5, 1046.5, 783.99, 659.25];
+      const noteLen = Math.min(dur / notes.length, 0.45);
+      notes.forEach((freq, i) => {
+        if (now + i * noteLen > now + dur) return;
+        const t = now + i * noteLen;
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(freq, t);
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.5, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, t + noteLen * 1.8);
+        o.connect(g); g.connect(master);
+        o.start(t); o.stop(t + noteLen * 2);
+        // Harmonic overtone
+        const o2 = ctx.createOscillator(), g2 = ctx.createGain();
+        o2.type = 'sine';
+        o2.frequency.setValueAtTime(freq * 2, t);
+        g2.gain.setValueAtTime(0, t);
+        g2.gain.linearRampToValueAtTime(0.15, t + 0.02);
+        g2.gain.exponentialRampToValueAtTime(0.001, t + noteLen);
+        o2.connect(g2); g2.connect(master);
+        o2.start(t); o2.stop(t + noteLen);
+      });
+      break;
+    }
+
+    case 'buzzer': {
+      // Industrial buzzer — deep, harsh, low frequency
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.8, now);
+      master.connect(ctx.destination);
+      // Low buzz
+      const o1 = ctx.createOscillator(), g1 = ctx.createGain();
+      o1.type = 'sawtooth'; o1.frequency.setValueAtTime(80, now);
+      g1.gain.setValueAtTime(0, now);
+      g1.gain.linearRampToValueAtTime(0.6, now + 0.03);
+      // Buzz pattern: on/off
+      const buzzLen = 0.3;
+      const buzzCount = Math.floor(dur / (buzzLen * 2));
+      for (let i = 0; i < buzzCount; i++) {
+        const t = now + i * buzzLen * 2;
+        g1.gain.setValueAtTime(0.6, t);
+        g1.gain.setValueAtTime(0.6, t + buzzLen - 0.02);
+        g1.gain.linearRampToValueAtTime(0, t + buzzLen);
+        g1.gain.setValueAtTime(0, t + buzzLen * 2);
+      }
+      o1.connect(g1); g1.connect(master);
+      o1.start(now); o1.stop(now + dur);
+      // Noise layer
+      const bufSize = ctx.sampleRate * dur;
+      const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.15;
+      const ns = ctx.createBufferSource(), ng = ctx.createGain();
+      ng.gain.setValueAtTime(0.15, now);
+      ns.buffer = buf; ns.connect(ng); ng.connect(master);
+      ns.start(now); ns.stop(now + dur);
+      break;
+    }
+
+    case 'pulse': {
+      // Heartbeat pulse — thump-thump pattern
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.7, now);
+      master.connect(ctx.destination);
+      const thumps = [0, 0.15]; // double-beat offset
+      const beatEvery = 0.65;
+      const beatCount = Math.floor(dur / beatEvery);
+      for (let b = 0; b < beatCount; b++) {
+        thumps.forEach(offset => {
+          const t = now + b * beatEvery + offset;
+          if (t > now + dur) return;
+          const o = ctx.createOscillator(), g = ctx.createGain();
+          o.type = 'sine';
+          o.frequency.setValueAtTime(120, t);
+          o.frequency.exponentialRampToValueAtTime(60, t + 0.12);
+          g.gain.setValueAtTime(0, t);
+          g.gain.linearRampToValueAtTime(0.7, t + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+          o.connect(g); g.connect(master);
+          o.start(t); o.stop(t + 0.2);
+        });
+      }
+      break;
+    }
+
+    case 'digital': {
+      // Retro 8-bit — rapid arpeggio of square wave tones
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.55, now);
+      master.connect(ctx.destination);
+      const arpNotes = [220, 277.18, 329.63, 440, 554.37, 440, 329.63, 277.18];
+      const noteStep = 0.12;
+      const totalNotes = Math.floor(dur / noteStep);
+      for (let i = 0; i < totalNotes; i++) {
+        const t = now + i * noteStep;
+        const freq = arpNotes[i % arpNotes.length];
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'square';
+        o.frequency.setValueAtTime(freq, t);
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.4, t + 0.005);
+        g.gain.setValueAtTime(0.4, t + noteStep - 0.015);
+        g.gain.linearRampToValueAtTime(0, t + noteStep);
+        o.connect(g); g.connect(master);
+        o.start(t); o.stop(t + noteStep + 0.01);
+      }
+      break;
+    }
+  }
+}
+
+// ─── ALARM CYCLE ───
+function runAlarmCycle() {
+  if (!alarmActive) return;
+  const dur   = cfg.alarmDur;
+  const pause = cfg.pauseDur;
+  const circ  = 213.6; // 2π * 34
+
+  playSound(cfg.soundStyle, dur);
+
+  // Show "sounding" then switch to countdown
+  $('countdownNum').textContent = '🔔';
+  $('ringProg').style.transition = 'none';
+  $('ringProg').style.strokeDashoffset = '0';
+
+  // After burst, start countdown
+  alarmCycleTO = setTimeout(() => {
+    if (!alarmActive) return;
+    let remaining = pause;
+    $('countdownNum').textContent = remaining;
+    $('ringProg').style.transition = `stroke-dashoffset ${pause}s linear`;
+    $('ringProg').style.strokeDashoffset = circ.toString();
+
+    clearInterval(countdownIV);
+    countdownIV = setInterval(() => {
+      remaining--;
+      $('countdownNum').textContent = Math.max(0, remaining);
+      if (remaining <= 0) {
+        clearInterval(countdownIV);
+        runAlarmCycle();
+      }
+    }, 1000);
+  }, dur * 1000);
+}
+
+function triggerAlert(subjectText) {
+  if (alarmActive) return;
+  alarmActive = true;
+
+  $('alertSubjectText').textContent = subjectText;
+  $('flashOverlay').classList.add('flashing');
+  showScreen('alert');
+
+  if (Notification.permission === 'granted') {
+    new Notification('🔔 New OTC Order!', {
+      body: subjectText,
+      requireInteraction: true,
+      tag: 'otc-order'
+    });
+  }
+  runAlarmCycle();
+}
+
+function dismissAlert() {
+  alarmActive = false;
+  clearTimeout(alarmCycleTO);
+  clearInterval(countdownIV);
+  $('flashOverlay').classList.remove('flashing');
+
+  // Track acknowledged order ID in localStorage so it won't re-trigger
+  if (window._pendingMsgId) {
+    localStorage.setItem('otc_last_ack', window._pendingMsgId);
+  }
+
+  log('Order acknowledged ✓', 'ok');
+  snack('Order marked as fulfilling!');
+  showScreen('idle');
+}
+
+// ─── GMAIL POLLING ───
+let _lastMsgId = null;
+
+// ─── STORE HOURS CHECK (6am–10pm PST) ───
+function isWithinStoreHours() {
+  const now = new Date();
+  // Convert to PST/PDT using Intl
+  const pstStr = now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false });
+  const hour = parseInt(pstStr, 10);
+  return hour >= 6 && hour < 22; // 6:00am to 9:59pm (alerts stop at 10pm)
+}
+
+function getPSTTimeStr() {
+  return new Date().toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+async function checkGmail() {
+  if (!isMonitoring) return;
+  if (!accessToken) { showScreen('auth'); return; }
+  // Outside store hours — show closed status, skip polling
+  if (!isWithinStoreHours()) {
+    $('monitorStatus').textContent = 'Closed — Resumes 6AM PST';
+    $('monitorStatus').classList.remove('on');
+    $('monitorStatus').style.color = 'var(--muted)';
+    $('pulseRing').classList.remove('on');
+    return;
+  }
+  // Within hours — restore active state
+  $('monitorStatus').textContent = 'Monitoring';
+  $('monitorStatus').classList.add('on');
+  $('monitorStatus').style.color = '';
+  $('pulseRing').classList.add('on');
+  try {
+    const q = encodeURIComponent(`subject:"${cfg.subject}"`);
+    const res = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=5`,
+      { headers: { Authorization: 'Bearer ' + accessToken } }
+    );
+    if (res.status === 401) {
+      // Token expired mid-session — try silent refresh then retry once
+      log('Token expired — attempting silent refresh...', 'warn');
+      getTokenClient(() => {
+        log('Token refreshed — resuming', 'ok');
+      }).requestAccessToken({ prompt: '' });
+      return;
+    }
+    const data = await res.json();
+    const msgs = data.messages || [];
+    if (!msgs.length) { log('Checked — no new orders'); return; }
+    const newest = msgs[0].id;
+    // Check against both in-memory and localStorage acknowledged IDs
+    const lastAck = localStorage.getItem('otc_last_ack');
+    if (newest === _lastMsgId || newest === lastAck) { log('Checked — already acknowledged'); return; }
+    _lastMsgId = newest;
+    window._pendingMsgId = newest;
+    // Fetch subject
+    const mRes = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${newest}?format=metadata&metadataHeaders=Subject`,
+      { headers: { Authorization: 'Bearer ' + accessToken } }
+    );
+    const mData = await mRes.json();
+    const subj = mData.payload?.headers?.find(h => h.name === 'Subject')?.value || cfg.subject;
+    log('NEW ORDER: ' + subj, 'warn');
+    triggerAlert(subj);
+  } catch(e) { log('Poll error: ' + e.message, 'err'); }
+}
+
+function startMonitoring() {
+  initAudio();
+  isMonitoring = true;
+  $('pulseRing').classList.add('on');
+  $('monitorStatus').textContent = 'Monitoring';
+  $('monitorStatus').classList.add('on');
+  $('startBtn').style.display = 'none';
+  $('stopBtn').style.display  = '';
+  if (Notification.permission === 'default') Notification.requestPermission();
+  log(`Monitoring for: "${cfg.subject}"`, 'ok');
+  checkGmail();
+  monitorTimer = setInterval(checkGmail, cfg.pollFreq * 1000);
+}
+
+function stopMonitoring() {
+  isMonitoring = false;
+  clearInterval(monitorTimer);
+  $('pulseRing').classList.remove('on');
+  $('monitorStatus').textContent = 'Not Monitoring';
+  $('monitorStatus').classList.remove('on');
+  $('startBtn').style.display = '';
+  $('stopBtn').style.display  = 'none';
+  log('Monitoring stopped');
+}
+
+// ─── UPDATE IDLE INFO PANEL ───
+function refreshIdlePanel() {
+  // Panel simplified — info rows removed
+}
+
+// ─── GOOGLE AUTH ───
+// ─── TOKEN CLIENT (reused for silent refresh) ───
+let _tokenClient = null;
+let _tokenExpiry  = 0;  // epoch ms when current token expires
+const TOKEN_REFRESH_MS = 45 * 60 * 1000; // refresh 45 min after issue (tokens last 60 min)
+
+function getTokenClient(callback) {
+  _tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: GMAIL_SCOPE,
+    prompt: '',        // empty = silent refresh if session exists, no popup
+    callback: resp => {
+      if (resp.error) {
+        // Silent refresh failed — need user to sign in again
+        log('Session expired — please sign in again', 'err');
+        stopMonitoring();
+        showScreen('auth');
+        return;
+      }
+      accessToken  = resp.access_token;
+      _tokenExpiry = Date.now() + TOKEN_REFRESH_MS;
+      sessionStorage.setItem('otc_token',   accessToken);
+      sessionStorage.setItem('otc_email',   userEmail);
+      sessionStorage.setItem('otc_expiry',  _tokenExpiry);
+      if (callback) callback();
+    }
+  });
+  return _tokenClient;
+}
+
+// Call this before any API request — silently renews if near expiry
+function ensureFreshToken(callback) {
+  if (accessToken && Date.now() < _tokenExpiry) {
+    callback(); // token still valid
+    return;
+  }
+  // Token expired or missing — try silent refresh
+  log('Refreshing auth token silently...', '');
+  getTokenClient(callback).requestAccessToken({ prompt: '' });
+}
+
+function initGoogleAuth() {
+  if (typeof google === 'undefined') { setTimeout(initGoogleAuth, 500); return; }
+  const saved   = sessionStorage.getItem('otc_token');
+  const email   = sessionStorage.getItem('otc_email');
+  const expiry  = parseInt(sessionStorage.getItem('otc_expiry') || '0');
+  if (saved && email) {
+    accessToken  = saved;
+    userEmail    = email;
+    _tokenExpiry = expiry || (Date.now() + TOKEN_REFRESH_MS);
+    afterAuth();
+  } else {
+    showScreen('auth');
+  }
+}
+
+function afterAuth() {
+  loadSettings();
+  refreshIdlePanel();
+  showScreen('idle');
+  $('sEmailDisplay') && ($('sEmailDisplay').value = userEmail);
+
+  // Schedule a proactive silent token refresh every 45 min
+  setInterval(() => {
+    if (!accessToken) return;
+    log('Proactive token refresh...', '');
+    getTokenClient(null).requestAccessToken({ prompt: '' });
+  }, TOKEN_REFRESH_MS);
+
+  // Auto-start monitoring immediately on launch
+  setTimeout(() => {
+    startMonitoring();
+    if (!isWithinStoreHours()) {
+      $('monitorStatus').textContent = 'Closed — Resumes 6AM PST';
+      $('monitorStatus').classList.remove('on');
+      $('pulseRing').classList.remove('on');
+    }
+  }, 300);
+}
+
+$('signInBtn').addEventListener('click', () => {
+  // First sign-in always needs prompt so user can select account
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: GMAIL_SCOPE,
+    prompt: 'select_account',
+    callback: resp => {
+      if (resp.error) { snack('Sign-in failed'); return; }
+      accessToken  = resp.access_token;
+      _tokenExpiry = Date.now() + TOKEN_REFRESH_MS;
+      fetch('https://www.googleapis.com/oauth2/v1/userinfo?alt=json', {
+        headers: { Authorization: 'Bearer ' + accessToken }
+      }).then(r => r.json()).then(info => {
+        userEmail = info.email || '';
+        sessionStorage.setItem('otc_token',  accessToken);
+        sessionStorage.setItem('otc_email',  userEmail);
+        sessionStorage.setItem('otc_expiry', _tokenExpiry);
+        afterAuth();
+      });
+    }
+  });
+  client.requestAccessToken();
+});
+
+function signOut() {
+  sessionStorage.clear();
+  accessToken  = null;
+  userEmail    = '';
+  _tokenExpiry = 0;
+  stopMonitoring();
+  showScreen('auth');
+}
+
+// ─── MONITORING BUTTONS ───
+$('startBtn').addEventListener('click', () => { if (!accessToken) { showScreen('auth'); return; } startMonitoring(); });
+$('stopBtn').addEventListener('click', stopMonitoring);
+$('confirmBtn').addEventListener('click', dismissAlert);
+
+// ─── PASSWORD / SETTINGS GATE ───
+$('settingsGate').addEventListener('click', () => {
+  pinEntry = '';
+  updatePinDots();
+  $('pwError').textContent = '';
+  showScreen('password');
+});
+
+$('pwBack').addEventListener('click', () => showScreen('idle'));
+$('settingsBack').addEventListener('click', () => showScreen('idle'));
+
+// Numpad
+document.querySelectorAll('.numpad-btn[data-n]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (pinEntry.length >= 6) return;
+    pinEntry += btn.dataset.n;
+    updatePinDots();
+    if (pinEntry.length === 6) checkPin();
+  });
+});
+
+$('delBtn').addEventListener('click', () => {
+  pinEntry = pinEntry.slice(0, -1);
+  updatePinDots();
+  $('pwError').textContent = '';
+});
+
+function updatePinDots() {
+  for (let i = 0; i < 6; i++) {
+    const dot = $('pd' + i);
+    dot.classList.toggle('filled', i < pinEntry.length);
+    dot.classList.remove('error');
+  }
+}
+
+function checkPin() {
+  if (pinEntry === CORRECT_PIN) {
+    // Load settings into UI
+    $('sSubject').value   = cfg.subject;
+    $('sSoundStyle').value = cfg.soundStyle;
+    $('sAlarmDur').value  = cfg.alarmDur;
+    $('sPauseDur').value  = cfg.pauseDur;
+    $('sPollFreq').value  = cfg.pollFreq;
+    $('sAlarmDurVal').textContent = cfg.alarmDur + 's';
+    $('sPauseDurVal').textContent = cfg.pauseDur + 's';
+    $('sPollFreqVal').textContent  = cfg.pollFreq + 's';
+    $('sEmailDisplay').value = userEmail;
+    showScreen('settings');
+  } else {
+    for (let i = 0; i < 6; i++) $('pd' + i).classList.add('error');
+    $('pwError').textContent = 'Incorrect PIN';
+    setTimeout(() => {
+      pinEntry = '';
+      updatePinDots();
+      $('pwError').textContent = '';
+    }, 1200);
+  }
+}
+
+// ─── SETTINGS SLIDERS ───
+$('sAlarmDur').addEventListener('input', e => {
+  $('sAlarmDurVal').textContent = e.target.value + 's';
+});
+$('sPauseDur').addEventListener('input', e => {
+  $('sPauseDurVal').textContent = e.target.value + 's';
+});
+$('sPollFreq').addEventListener('input', e => {
+  $('sPollFreqVal').textContent = e.target.value + 's';
+});
+
+// ─── PREVIEW SOUND ───
+let previewTO = null;
+$('previewBtn').addEventListener('click', () => {
+  initAudio();
+  const style = $('sSoundStyle').value;
+  const dur   = parseFloat($('sAlarmDur').value);
+  const btn   = $('previewBtn');
+  btn.classList.add('playing');
+  btn.textContent = '⏹ Playing...';
+  playSound(style, dur);
+  clearTimeout(previewTO);
+  previewTO = setTimeout(() => {
+    btn.classList.remove('playing');
+    btn.textContent = '▶ Preview Sound';
+  }, dur * 1000 + 200);
+});
+
+// ─── SAVE SETTINGS ───
+$('saveBtn').addEventListener('click', () => {
+  cfg.subject    = $('sSubject').value.trim() || 'New order';
+  cfg.soundStyle = $('sSoundStyle').value;
+  cfg.alarmDur   = parseFloat($('sAlarmDur').value);
+  cfg.pauseDur   = parseInt($('sPauseDur').value);
+  cfg.pollFreq   = parseInt($('sPollFreq').value);
+  saveSettings();
+  refreshIdlePanel();
+  // Restart monitoring with new poll freq if active
+  if (isMonitoring) { stopMonitoring(); startMonitoring(); }
+  snack('Settings saved!');
+  showScreen('idle');
+});
+
+// Sign out buttons
+$('sSignOutBtn').addEventListener('click', signOut);
+$('sSignOutBtn2').addEventListener('click', signOut);
+
+// ─── LOG SCREEN ───
+$('viewLogBtn').addEventListener('click', () => showScreen('log'));
+$('logBack').addEventListener('click', () => showScreen('settings'));
+$('clearLogBtn').addEventListener('click', () => {
+  const box = $('logBox');
+  box.innerHTML = '<div class="log-line" style="font-size:12px;padding:6px 0;">Log cleared.</div>';
+  snack('Log cleared');
+});
+
+// ─── INIT ───
+window.addEventListener('load', () => {
+  loadSettings();
+  setTimeout(initGoogleAuth, 800);
+});
+</script>
+</body>
+</html>
